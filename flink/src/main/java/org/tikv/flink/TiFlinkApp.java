@@ -11,6 +11,8 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.apache.flink.api.common.JobExecutionResult;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.RestOptions;
 import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.environment.RemoteStreamEnvironment;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -238,7 +240,7 @@ public class TiFlinkApp implements AutoCloseable {
 
       final TiConfiguration tiConf = TiConfiguration.createDefault(helper.getPDAddresses().get(0));
 
-      final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+      final StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironmentWithWebUI(new Configuration().set(RestOptions.PORT, 18083));
       env.setParallelism(parallism);
       env.enableCheckpointing(checkpointInterval);
       env.getCheckpointConfig().setCheckpointingMode(CheckpointingMode.EXACTLY_ONCE);

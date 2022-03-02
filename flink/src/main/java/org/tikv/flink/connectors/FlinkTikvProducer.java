@@ -109,7 +109,7 @@ public class FlinkTikvProducer extends RichSinkFunction<RowData>
     }
 
     synchronized (txnHolder) {
-      if (txnHolder.isNew()) {
+      if (txnHolder.isNew() || txnHolder.isPrewriting()) {
         txnHolder.set(
             coordinator.prewriteTransaction(txnHolder.getCheckpointId(), tableInfo.getId()));
       }
@@ -189,7 +189,7 @@ public class FlinkTikvProducer extends RichSinkFunction<RowData>
     final CommitContext ctx = commitContextMap.remove(txn.getCheckpointId());
 
     // start new transaction
-    txnHolder.set(coordinator.openTransaction(checkpointId));
+    txnHolder.set(coordinator.openTransaction(checkpointId, getRuntimeContext().getNumberOfParallelSubtasks()));
     flushBlockingFlag.setRelease(false);
 
     if (ctx != null) {
@@ -199,7 +199,10 @@ public class FlinkTikvProducer extends RichSinkFunction<RowData>
 
   @Override
   public void snapshotState(final FunctionSnapshotContext context) throws Exception {
-    LOGGER.info("snapshotState, checkpointId: {}", context.getCheckpointId());
+    LOGGER.info(
+            "snapshotState checkpoint: {}, thread: {}",
+            context.getCheckpointId(),
+            Thread.currentThread().getId());
     flushCachedValues();
 
     transactionState.clear();
@@ -225,7 +228,7 @@ public class FlinkTikvProducer extends RichSinkFunction<RowData>
     }
     transactionState.clear();
 
-    txnHolder.set(coordinator.openTransaction(0));
+    txnHolder.set(coordinator.openTransaction(0, getRuntimeContext().getNumberOfParallelSubtasks()));
     transactionState.add(txnHolder.get());
   }
 

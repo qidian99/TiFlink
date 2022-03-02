@@ -37,7 +37,7 @@ class GrpcService extends CoordinatorServiceGrpc.CoordinatorServiceImplBase
     this(TiSession.create(conf));
   }
 
-  protected Transaction openTransaction(final long checkpointId) {
+  protected Transaction openTransaction(final long checkpointId, long parallelism) {
     logger.info("open transaction: {}", checkpointId);
     synchronized (transactions) {
       final TransactionHolder holder =
@@ -49,6 +49,7 @@ class GrpcService extends CoordinatorServiceGrpc.CoordinatorServiceImplBase
               ImmutableTransaction.builder()
                   .checkpointId(checkpointId)
                   .startTs(getTimestamp(checkpointId))
+                  .parallelism(parallelism)
                   .build());
           return holder.getTxn();
         } else if (holder.getTxn().isNew()) {
@@ -67,11 +68,13 @@ class GrpcService extends CoordinatorServiceGrpc.CoordinatorServiceImplBase
 
     final Transaction txn = holder.getTxn();
     if (txn.isPrewriting()) {
+      holder.increasePrewriteCnt();
       return txn;
     }
 
     synchronized (holder) {
-      Preconditions.checkState(holder.getTxn().isNew(), "Transaction status should be NEW");
+//      Preconditions.checkState(holder.getTxn().isNew() || (holder.getTxn().isPrewriting() && holder.getTxn().getParallelism() != holder.getPrewriteCnt()), "Transaction status should be NEW");
+      Preconditions.checkState(holder.getTxn().isNew() || holder.getTxn().isPrewriting());
       final byte[] pk = GrpcCommitKey.encode(tableId, txn.getCheckpointId(), txn.getStartTs());
       prewritePrimaryKey(pk, holder.getCommitter());
       holder.setTxn(
@@ -80,6 +83,7 @@ class GrpcService extends CoordinatorServiceGrpc.CoordinatorServiceImplBase
               .primaryKey(pk)
               .status(Transaction.Status.PREWRITE)
               .build());
+      holder.increasePrewriteCnt();
       return holder.getTxn();
     }
   }
@@ -88,6 +92,7 @@ class GrpcService extends CoordinatorServiceGrpc.CoordinatorServiceImplBase
     logger.info("commit transaction: {}", checkpointId);
     final TransactionHolder holder = transactions.get(checkpointId);
     Preconditions.checkNotNull(holder, "Transaction not found");
+//    Preconditions.checkArgument(!holder.getTxn().isPrewriting() || (holder.getPrewriteCnt() == holder.getTxn().getParallelism()), "Not all producer (sink) has successfully precommitted.");
 
     synchronized (holder) {
       if (holder.getTxn().isCommitted()) {
@@ -139,7 +144,7 @@ class GrpcService extends CoordinatorServiceGrpc.CoordinatorServiceImplBase
     final TransactionHolder holder = transactions.get(checkpointId);
     if (holder == null) {
       // fail silently for unknown transactions
-      return ImmutableTransaction.builder().checkpointId(checkpointId).build();
+      return ImmutableTransaction.builder().startTs(getTimestamp(checkpointId)).checkpointId(checkpointId).status(Transaction.Status.ABORTED).build();
     }
 
     final Transaction txn = holder.getTxn();
@@ -237,7 +242,7 @@ class GrpcService extends CoordinatorServiceGrpc.CoordinatorServiceImplBase
       switch (request.getAction()) {
         case OPEN:
           responseObserver.onNext(
-              transactionToResponse(openTransaction(request.getCheckpointId())));
+              transactionToResponse(openTransaction(request.getCheckpointId(), request.getParallelism() == 0 ? 1 : request.getParallelism())));
           break;
         case PREWRITE:
           Preconditions.checkArgument(request.hasTableId(), "TableId can't be empty");
@@ -275,6 +280,16 @@ class GrpcService extends CoordinatorServiceGrpc.CoordinatorServiceImplBase
   class TransactionHolder implements AutoCloseable {
     private volatile Transaction txn = null;
     private TwoPhaseCommitter committer = null;
+
+    public int getPrewriteCnt() {
+      return prewriteCnt;
+    }
+
+    public void increasePrewriteCnt() {
+      this.prewriteCnt += 1;
+    }
+
+    private int prewriteCnt = 0;
 
     public Transaction getTxn() {
       return txn;

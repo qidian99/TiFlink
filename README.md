@@ -66,12 +66,109 @@ TiFlinkApp.newBuilder()
    .start(); // Start the app
 ```
 
+## Table Structures
+
+### authors
+
+```sql
+CREATE TABLE IF NOT EXISTS authors (
+    id int not null auto_increment,
+    first_name varchar(255),
+    last_name varchar(255),
+    email varchar(255),
+    PRIMARY KEY (id)
+);
+
+CREATE TABLE IF NOT EXISTS posts (
+    id int not null auto_increment,
+    author_id int,
+    PRIMARY KEY (id),
+    foreign key aid (author_id) references authors(id) on delete cascade 
+);
+
+insert into authors values (1, 'Dian', 'Qi', 'email@example.com');
+insert into authors values (2, 'Naid', 'Iq', 'liame@example.com');
+```
+
+## Problem
+
+1. Full Data Sync will block on checkpoint lock if source is emitting records while checkpointing is in progresss. 
+2. Table region issue in Tiup playground
+
+SPLIT TABLE table_name [INDEX index_name] BETWEEN (lower_value) AND (upper_value) REGIONS region_num
+SPLIT TABLE authors BETWEEN (1) AND (300) REGIONS 1;
+
+```sql
+CREATE TABLE IF NOT EXISTS `authors` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `first_name` varchar(50),
+  `last_name` varchar(50),
+  `email` varchar(100),
+  `birthdate` date,
+  `added` timestamp DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`)
+) partition by hash(id) partitions 2;
+
+CREATE TABLE IF NOT EXISTS `posts` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `author_id` int(11),
+  `title` varchar(255),
+  `description` varchar(500),
+  `content` text,
+  `date` date,
+  PRIMARY KEY (`id`)
+) partition by hash(id) partitions 2;
+
+CREATE TABLE IF NOT EXISTS `author_posts` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `first_name` varchar(50),
+  `last_name` varchar(50),
+  `email` varchar(100),
+  `posts` bigint(32),
+  PRIMARY KEY (`id`)
+) partition by hash(id) partitions 2;
+
+```
+```bash
+mysql> show table authors regions\G
+*************************** 1. row ***************************
+           REGION_ID: 119
+           START_KEY: t_141_
+             END_KEY: t_142_
+           LEADER_ID: 120
+     LEADER_STORE_ID: 1
+               PEERS: 120
+          SCATTERING: 0
+       WRITTEN_BYTES: 0
+          READ_BYTES: 0
+APPROXIMATE_SIZE(MB): 1
+    APPROXIMATE_KEYS: 0
+*************************** 2. row ***************************
+           REGION_ID: 121
+           START_KEY: t_142_
+             END_KEY: t_145_
+           LEADER_ID: 122
+     LEADER_STORE_ID: 1
+               PEERS: 122
+          SCATTERING: 0
+       WRITTEN_BYTES: 927
+          READ_BYTES: 0
+APPROXIMATE_SIZE(MB): 1
+    APPROXIMATE_KEYS: 0
+2 rows in set (0.00 sec)
+```
+
+
+3. ScanRow return empty set when parallelism = 1
+
+TiKV regions error
 ## TODO
 
 - [ ] Non-Integer and compound primary key support
 - [ ] Better Flink task to TiKV Region mapping  
 - [ ] Automatically clean up uncommitted transaction on restart
 - [ ] Unit tests
+
 
 # License
 

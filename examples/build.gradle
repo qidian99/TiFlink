@@ -24,7 +24,7 @@ dependencies {
 
     implementation 'mysql:mysql-connector-java:8.0.26'
 
-    implementation 'org.tikv:tikv-client-java:3.2.0-SNAPSHOT'
+    implementation 'org.tikv:tikv-client-java:3.2.0'
 }
 
 application {

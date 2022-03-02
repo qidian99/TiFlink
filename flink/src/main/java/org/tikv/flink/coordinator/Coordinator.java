@@ -10,4 +10,6 @@ public interface Coordinator extends AutoCloseable, Serializable {
   Transaction commitTransaction(long checkpointId);
 
   Transaction abortTransaction(long checkpointId);
+
+  Transaction openTransaction(long checkpointIdi, int parallelism);
 }

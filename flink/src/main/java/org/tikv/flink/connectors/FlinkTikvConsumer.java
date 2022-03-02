@@ -209,14 +209,12 @@ public class FlinkTikvConsumer extends RichParallelSourceFunction<RowData>
         Thread.currentThread().getId());
     final Transaction txn = txnHolder.get();
 
-    while (resolvedTs < txn.getStartTs()) {
-      Thread.yield();
+    if (resolvedTs >= txn.getStartTs()) {
+      flushRows(txn.getStartTs(), true);
+
+      resolvedTransactions.clear();
+      resolvedTransactions.add(txn);
     }
-
-    flushRows(txn.getStartTs(), true);
-
-    resolvedTransactions.clear();
-    resolvedTransactions.add(txn);
   }
 
   @Override
@@ -231,14 +229,17 @@ public class FlinkTikvConsumer extends RichParallelSourceFunction<RowData>
       resolvedTs = ts.getStartTs();
     }
 
-    txnHolder.set(coordinator.openTransaction(0));
+    txnHolder.set(coordinator.openTransaction(0, getRuntimeContext().getNumberOfParallelSubtasks()));
   }
 
   @Override
   public void notifyCheckpointComplete(long checkpointId) throws Exception {
-    LOGGER.debug("checkpoint completed: {}", checkpointId);
-    coordinator.commitTransaction(txnHolder.getCheckpointId());
-    txnHolder.set(coordinator.openTransaction(checkpointId));
+    LOGGER.info("checkpoint completed: {}", checkpointId);
+
+    if (resolvedTs >= txnHolder.get().getStartTs()) {
+      coordinator.commitTransaction(txnHolder.getCheckpointId());
+      txnHolder.set(coordinator.openTransaction(checkpointId, getRuntimeContext().getNumberOfParallelSubtasks()));
+    }
   }
 
   protected RowData decodeToRowData(final Row row) {

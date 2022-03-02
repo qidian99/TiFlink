@@ -20,6 +20,7 @@ message TxnRequest {
     required string clientVersion = 2;
   }
   optional Meta meta = 4;
+  optional int64 parallelism = 5;
 }
 
 message TxnResponse {

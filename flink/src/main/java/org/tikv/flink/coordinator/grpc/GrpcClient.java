@@ -23,21 +23,12 @@ class GrpcClient implements Coordinator {
   private transient ManagedChannel channel;
   private transient CoordinatorServiceBlockingStub blockingStub;
 
-  GrpcClient(final InetSocketAddress serverAddress) {
-    this.serverAddress = serverAddress;
-  }
-
   GrpcClient(final String host, final int port) {
     this(new InetSocketAddress(host, port));
   }
 
-  public void open() {
-    logger.info("Client open connection to: {}", serverAddress);
-    channel =
-        ManagedChannelBuilder.forAddress(serverAddress.getHostName(), serverAddress.getPort())
-            .usePlaintext()
-            .build();
-    blockingStub = CoordinatorServiceGrpc.newBlockingStub(channel);
+  GrpcClient(final InetSocketAddress serverAddress) {
+    this.serverAddress = serverAddress;
   }
 
   @Override
@@ -82,6 +73,16 @@ class GrpcClient implements Coordinator {
             .build());
   }
 
+  @Override
+  public Transaction openTransaction(long checkpointId, int parallelism) {
+    return call(
+            TxnRequest.newBuilder()
+                    .setAction(TxnRequest.Action.OPEN)
+                    .setCheckpointId(checkpointId)
+                    .setParallelism(parallelism)
+                    .build());
+  }
+
   private Transaction call(final TxnRequest req) {
     if (blockingStub == null) {
       open();
@@ -118,5 +119,14 @@ class GrpcClient implements Coordinator {
     }
 
     return txnBuilder.build();
+  }
+
+  public void open() {
+    logger.info("Client open coCDCClientnnection to: {}", serverAddress);
+    channel =
+        ManagedChannelBuilder.forAddress(serverAddress.getHostName(), serverAddress.getPort())
+            .usePlaintext()
+            .build();
+    blockingStub = CoordinatorServiceGrpc.newBlockingStub(channel);
   }
 }

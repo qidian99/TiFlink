@@ -32,6 +32,11 @@ public interface Transaction {
     return Status.NEW;
   }
 
+  @Value.Default
+  default long getParallelism() {
+    return 1;
+  }
+
   default boolean isTerminated() {
     switch (getStatus()) {
       case ABORTED:
